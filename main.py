@@ -10,6 +10,7 @@ import schedule
 
 comm = MPI.COMM_WORLD
 rank = comm.rank
+k = comm.size + 1
 
 ILLEGAL_PROBABILITY = 0.02
 
@@ -92,7 +93,7 @@ class Node:
         self.sched_t = Thread(target=self.scheduler)
 
     def change_state(self):
-        self.state = self.state + 1 if self.leader else self.left_state
+        self.state = (self.state + 1 if self.leader else self.left_state) % k
         self.log.warning('changing state to %d' % self.state)
         Message(self.state).send(self.next_node)
 
@@ -102,11 +103,13 @@ class Node:
         else:
             return (self.left_state != self.state)
 
-    def make_me_illegal(self):
+    def do_something(self):
         if random.random() < ILLEGAL_PROBABILITY:
-            self.state = random.randint(0, 1000)
+            self.state = (random.randint(0, 1000)) % k
             self.log.critical('I AM NOW AT STATE %d, MWAHAHAHA!' % self.state)
             Message(self.state).send(self.next_node)
+        else:
+            self.i_want_to_change()
 
     def i_want_to_change(self):
         if self.can_change_state():
@@ -114,8 +117,8 @@ class Node:
 
     def run(self):
         # initialize stuff
-        schedule.every(1).seconds.do(self.make_me_illegal)
-        schedule.every(1).seconds.do(self.i_want_to_change)
+        self.log.info('leader == %d' % int(self.leader))
+        schedule.every(1).seconds.do(self.do_something)
         self.sched_t.start()
         self.log.info('node initialized')
         # hey Link, listen
@@ -124,7 +127,7 @@ class Node:
             self.on_receive(message)
 
     def on_receive(self, left_state):
-        self.log.info('node %02d is now in state %d' %
+        self.log.info('node %02d is now at state %d' %
                       (self.prev_node, left_state))
         self.left_state = left_state
 
